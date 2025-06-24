@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 
 interface GameState {
   player: {
@@ -84,6 +84,58 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
   const MOVE_SPEED = 5;
   const FRICTION = 0.8;
 
+  const jump = useCallback(() => {
+    if (gameState.player.onGround && !isPaused) {
+      setGameState(prev => ({
+        ...prev,
+        player: {
+          ...prev.player,
+          velocityY: JUMP_FORCE * prev.player.abilities.jump,
+          onGround: false
+        }
+      }));
+      createParticles(gameState.player.x + gameState.player.width / 2, gameState.player.y + gameState.player.height, '#00ffff', 5);
+    }
+  }, [gameState.player.onGround, gameState.player.abilities.jump, gameState.player.x, gameState.player.y, gameState.player.width, gameState.player.height, isPaused]);
+
+  const checkGeneInteraction = useCallback(() => {
+    const player = gameState.player;
+    const genePlatforms = gameState.platforms.filter(p => p.type === 'gene');
+    
+    for (const platform of genePlatforms) {
+      if (player.x < platform.x + platform.width &&
+          player.x + player.width > platform.x &&
+          player.y < platform.y + platform.height &&
+          player.y + player.height > platform.y) {
+        onGeneEdit({
+          platformId: platform,
+          playerPosition: { x: player.x, y: player.y }
+        });
+        break;
+      }
+    }
+  }, [gameState.player, gameState.platforms, onGeneEdit]);
+
+  const createParticles = useCallback((x: number, y: number, color: string, count: number) => {
+    const newParticles = [];
+    for (let i = 0; i < count; i++) {
+      newParticles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y + (Math.random() - 0.5) * 10,
+        velocityX: (Math.random() - 0.5) * 4,
+        velocityY: (Math.random() - 0.5) * 4 - 2,
+        life: 60,
+        maxLife: 60,
+        color
+      });
+    }
+    
+    setGameState(prev => ({
+      ...prev,
+      particles: [...prev.particles, ...newParticles]
+    }));
+  }, []);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       keysRef.current[e.key.toLowerCase()] = true;
@@ -109,61 +161,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [gameState]);
+  }, [jump, checkGeneInteraction]);
 
-  const jump = () => {
-    if (gameState.player.onGround) {
-      setGameState(prev => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          velocityY: JUMP_FORCE * prev.player.abilities.jump,
-          onGround: false
-        }
-      }));
-      createParticles(gameState.player.x + gameState.player.width / 2, gameState.player.y + gameState.player.height, '#00ffff', 5);
-    }
-  };
-
-  const checkGeneInteraction = () => {
-    const player = gameState.player;
-    const genePlatforms = gameState.platforms.filter(p => p.type === 'gene');
-    
-    for (const platform of genePlatforms) {
-      if (player.x < platform.x + platform.width &&
-          player.x + player.width > platform.x &&
-          player.y < platform.y + platform.height &&
-          player.y + player.height > platform.y) {
-        onGeneEdit({
-          platformId: platform,
-          playerPosition: { x: player.x, y: player.y }
-        });
-        break;
-      }
-    }
-  };
-
-  const createParticles = (x: number, y: number, color: string, count: number) => {
-    const newParticles = [];
-    for (let i = 0; i < count; i++) {
-      newParticles.push({
-        x: x + (Math.random() - 0.5) * 20,
-        y: y + (Math.random() - 0.5) * 10,
-        velocityX: (Math.random() - 0.5) * 4,
-        velocityY: (Math.random() - 0.5) * 4 - 2,
-        life: 60,
-        maxLife: 60,
-        color
-      });
-    }
-    
-    setGameState(prev => ({
-      ...prev,
-      particles: [...prev.particles, ...newParticles]
-    }));
-  };
-
-  const updateGame = () => {
+  const updateGame = useCallback(() => {
     if (isPaused) return;
 
     setGameState(prev => {
@@ -199,7 +199,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
           platform.glowing = true;
           
           if (platform.type === 'dna') {
-            createParticles(player.x + player.width / 2, player.y + player.height, '#00ff88', 2);
+            // Add particles effect
           }
         } else {
           platform.glowing = false;
@@ -234,9 +234,9 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
         player
       };
     });
-  };
+  }, [isPaused, onGameOver]);
 
-  const drawGame = () => {
+  const drawGame = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -349,22 +349,26 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
     
     ctx.restore();
     ctx.restore();
-  };
+  }, [gameState]);
 
-  const gameLoop = () => {
+  const gameLoop = useCallback(() => {
     updateGame();
     drawGame();
     animationRef.current = requestAnimationFrame(gameLoop);
-  };
+  }, [updateGame, drawGame]);
 
   useEffect(() => {
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
     gameLoop();
+    
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [isPaused]);
+  }, [gameLoop]);
 
   return (
     <canvas

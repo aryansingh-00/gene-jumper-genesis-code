@@ -85,7 +85,7 @@ const Index = () => {
     });
   }, [score, toast]);
 
-  const handleGeneEdit = useCallback((geneData: any) => {
+  const handleGeneEdit = useCallback(() => {
     setShowGeneEdit(true);
     setScore(prev => prev + 10); // Bonus points for accessing gene platform
   }, []);
@@ -128,6 +128,23 @@ const Index = () => {
     const editEvent = new KeyboardEvent('keydown', { key: 'e' });
     window.dispatchEvent(editEvent);
   }, []);
+
+  // Increment score over time while playing
+  useEffect(() => {
+    let scoreInterval: NodeJS.Timeout;
+    
+    if (gameState === 'playing') {
+      scoreInterval = setInterval(() => {
+        setScore(prev => prev + 1);
+      }, 1000); // Add 1 point every second
+    }
+    
+    return () => {
+      if (scoreInterval) {
+        clearInterval(scoreInterval);
+      }
+    };
+  }, [gameState]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/30 to-cyan-900/30 flex flex-col items-center justify-center p-4">
