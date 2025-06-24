@@ -28,7 +28,7 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
   const [matches, setMatches] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
 
-  const basePairs = {
+  const basePairs: Record<'A' | 'T' | 'G' | 'C', 'A' | 'T' | 'G' | 'C'> = {
     'A': 'T',
     'T': 'A',
     'G': 'C',
