@@ -6,11 +6,13 @@ import GameMenu from '../components/GameMenu';
 import GeneEditModal from '../components/GeneEditModal';
 import InstructionsModal from '../components/InstructionsModal';
 import { useToast } from '@/hooks/use-toast';
+import { useAudio } from '../hooks/useAudio';
 
 type GameState = 'menu' | 'playing' | 'paused' | 'gameOver';
 
 const Index = () => {
   const { toast } = useToast();
+  const { playJumpSound, playGeneEditSound, playGameOverSound } = useAudio();
   const [gameState, setGameState] = useState<GameState>('menu');
   const [showGeneEdit, setShowGeneEdit] = useState(false);
   const [showInstructions, setShowInstructions] = useState(false);
@@ -73,6 +75,7 @@ const Index = () => {
 
   const gameOver = useCallback(() => {
     setGameState('gameOver');
+    playGameOverSound();
     
     setTimeout(() => {
       setGameState('menu');
@@ -83,12 +86,13 @@ const Index = () => {
       description: `Final Score: ${score}. Your DNA integrity has been compromised!`,
       duration: 4000,
     });
-  }, [score, toast]);
+  }, [score, toast, playGameOverSound]);
 
   const handleGeneEdit = useCallback(() => {
     setShowGeneEdit(true);
-    setScore(prev => prev + 10); // Bonus points for accessing gene platform
-  }, []);
+    setScore(prev => prev + 10);
+    playGeneEditSound();
+  }, [playGeneEditSound]);
 
   const handleGeneEditComplete = useCallback((newAbilities: any) => {
     setPlayerStats(prev => ({
@@ -100,7 +104,7 @@ const Index = () => {
       }
     }));
     
-    setScore(prev => prev + 50); // Bonus for completing gene edit
+    setScore(prev => prev + 50);
     setGeneEditDifficulty(prev => Math.min(prev + 1, 5));
     setShowGeneEdit(false);
     
@@ -119,17 +123,17 @@ const Index = () => {
   }, [toast]);
 
   const handleJump = useCallback(() => {
-    // This will be passed to mobile controls
+    playJumpSound();
     const jumpEvent = new KeyboardEvent('keydown', { key: ' ' });
     window.dispatchEvent(jumpEvent);
-  }, []);
+  }, [playJumpSound]);
 
   const handleMobileGeneEdit = useCallback(() => {
     const editEvent = new KeyboardEvent('keydown', { key: 'e' });
     window.dispatchEvent(editEvent);
   }, []);
 
-  // Increment score over time while playing
+  // FIXED: Only increment score when actively playing (not paused)
   useEffect(() => {
     let scoreInterval: NodeJS.Timeout;
     
@@ -144,7 +148,7 @@ const Index = () => {
         clearInterval(scoreInterval);
       }
     };
-  }, [gameState]);
+  }, [gameState]); // Only depend on gameState, not score
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900/30 to-cyan-900/30 flex flex-col items-center justify-center p-4">

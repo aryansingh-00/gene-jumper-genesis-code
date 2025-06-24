@@ -50,8 +50,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
   const keysRef = useRef<{ [key: string]: boolean }>({});
-  
-  const [gameState, setGameState] = useState<GameState>({
+  const gameStateRef = useRef<GameState>({
     player: {
       x: 100,
       y: 300,
@@ -84,21 +83,34 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
   const MOVE_SPEED = 5;
   const FRICTION = 0.8;
 
+  const createParticles = useCallback((x: number, y: number, color: string, count: number) => {
+    const newParticles = [];
+    for (let i = 0; i < count; i++) {
+      newParticles.push({
+        x: x + (Math.random() - 0.5) * 20,
+        y: y + (Math.random() - 0.5) * 10,
+        velocityX: (Math.random() - 0.5) * 4,
+        velocityY: (Math.random() - 0.5) * 4 - 2,
+        life: 60,
+        maxLife: 60,
+        color
+      });
+    }
+    
+    gameStateRef.current.particles.push(...newParticles);
+  }, []);
+
   const jump = useCallback(() => {
+    const gameState = gameStateRef.current;
     if (gameState.player.onGround && !isPaused) {
-      setGameState(prev => ({
-        ...prev,
-        player: {
-          ...prev.player,
-          velocityY: JUMP_FORCE * prev.player.abilities.jump,
-          onGround: false
-        }
-      }));
+      gameState.player.velocityY = JUMP_FORCE * gameState.player.abilities.jump;
+      gameState.player.onGround = false;
       createParticles(gameState.player.x + gameState.player.width / 2, gameState.player.y + gameState.player.height, '#00ffff', 5);
     }
-  }, [gameState.player.onGround, gameState.player.abilities.jump, gameState.player.x, gameState.player.y, gameState.player.width, gameState.player.height, isPaused]);
+  }, [isPaused, createParticles]);
 
   const checkGeneInteraction = useCallback(() => {
+    const gameState = gameStateRef.current;
     const player = gameState.player;
     const genePlatforms = gameState.platforms.filter(p => p.type === 'gene');
     
@@ -114,27 +126,7 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
         break;
       }
     }
-  }, [gameState.player, gameState.platforms, onGeneEdit]);
-
-  const createParticles = useCallback((x: number, y: number, color: string, count: number) => {
-    const newParticles = [];
-    for (let i = 0; i < count; i++) {
-      newParticles.push({
-        x: x + (Math.random() - 0.5) * 20,
-        y: y + (Math.random() - 0.5) * 10,
-        velocityX: (Math.random() - 0.5) * 4,
-        velocityY: (Math.random() - 0.5) * 4 - 2,
-        life: 60,
-        maxLife: 60,
-        color
-      });
-    }
-    
-    setGameState(prev => ({
-      ...prev,
-      particles: [...prev.particles, ...newParticles]
-    }));
-  }, []);
+  }, [onGeneEdit]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -166,74 +158,63 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
   const updateGame = useCallback(() => {
     if (isPaused) return;
 
-    setGameState(prev => {
-      const newState = { ...prev };
-      const player = { ...newState.player };
+    const gameState = gameStateRef.current;
+    const player = gameState.player;
 
-      // Handle input
-      if (keysRef.current['arrowleft'] || keysRef.current['a']) {
-        player.velocityX = -MOVE_SPEED * player.abilities.speed;
-      } else if (keysRef.current['arrowright'] || keysRef.current['d']) {
-        player.velocityX = MOVE_SPEED * player.abilities.speed;
+    // Handle input
+    if (keysRef.current['arrowleft'] || keysRef.current['a']) {
+      player.velocityX = -MOVE_SPEED * player.abilities.speed;
+    } else if (keysRef.current['arrowright'] || keysRef.current['d']) {
+      player.velocityX = MOVE_SPEED * player.abilities.speed;
+    } else {
+      player.velocityX *= FRICTION;
+    }
+
+    // Apply gravity
+    player.velocityY += GRAVITY;
+
+    // Update position
+    player.x += player.velocityX;
+    player.y += player.velocityY;
+
+    // Platform collision
+    player.onGround = false;
+    for (const platform of gameState.platforms) {
+      if (player.x < platform.x + platform.width &&
+          player.x + player.width > platform.x &&
+          player.y + player.height > platform.y &&
+          player.y + player.height < platform.y + platform.height + player.velocityY) {
+        player.y = platform.y - player.height;
+        player.velocityY = 0;
+        player.onGround = true;
+        platform.glowing = true;
       } else {
-        player.velocityX *= FRICTION;
+        platform.glowing = false;
       }
+    }
 
-      // Apply gravity
-      player.velocityY += GRAVITY;
+    // Boundary collision
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > 1200) player.x = 1200 - player.width;
+    
+    // Death condition
+    if (player.y > 600) {
+      player.health = 0;
+      onGameOver();
+    }
 
-      // Update position
-      player.x += player.velocityX;
-      player.y += player.velocityY;
+    // Update camera
+    gameState.camera.x = Math.max(0, player.x - 400);
 
-      // Platform collision
-      player.onGround = false;
-      for (const platform of newState.platforms) {
-        if (player.x < platform.x + platform.width &&
-            player.x + player.width > platform.x &&
-            player.y + player.height > platform.y &&
-            player.y + player.height < platform.y + platform.height + player.velocityY) {
-          player.y = platform.y - player.height;
-          player.velocityY = 0;
-          player.onGround = true;
-          platform.glowing = true;
-          
-          if (platform.type === 'dna') {
-            // Add particles effect
-          }
-        } else {
-          platform.glowing = false;
-        }
-      }
-
-      // Boundary collision
-      if (player.x < 0) player.x = 0;
-      if (player.x + player.width > 1200) player.x = 1200 - player.width;
-      
-      // Death condition
-      if (player.y > 600) {
-        player.health = 0;
-        onGameOver();
-      }
-
-      // Update camera
-      newState.camera.x = Math.max(0, player.x - 400);
-
-      // Update particles
-      newState.particles = newState.particles
-        .map(p => ({
-          ...p,
-          x: p.x + p.velocityX,
-          y: p.y + p.velocityY,
-          life: p.life - 1
-        }))
-        .filter(p => p.life > 0);
-
-      return {
-        ...newState,
-        player
-      };
-    });
+    // Update particles
+    gameState.particles = gameState.particles
+      .map(p => ({
+        ...p,
+        x: p.x + p.velocityX,
+        y: p.y + p.velocityY,
+        life: p.life - 1
+      }))
+      .filter(p => p.life > 0);
   }, [isPaused, onGameOver]);
 
   const drawGame = useCallback(() => {
@@ -242,6 +223,8 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
+
+    const gameState = gameStateRef.current;
 
     // Clear canvas with animated background
     const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
@@ -349,26 +332,27 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ onGeneEdit, onGameOver, isPause
     
     ctx.restore();
     ctx.restore();
-  }, [gameState]);
+  }, []);
 
   const gameLoop = useCallback(() => {
     updateGame();
     drawGame();
-    animationRef.current = requestAnimationFrame(gameLoop);
-  }, [updateGame, drawGame]);
+    if (!isPaused) {
+      animationRef.current = requestAnimationFrame(gameLoop);
+    }
+  }, [updateGame, drawGame, isPaused]);
 
   useEffect(() => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
+    if (!isPaused) {
+      gameLoop();
     }
-    gameLoop();
     
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [gameLoop]);
+  }, [isPaused, gameLoop]);
 
   return (
     <canvas
