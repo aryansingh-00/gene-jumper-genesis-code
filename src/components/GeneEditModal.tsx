@@ -24,7 +24,7 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
 }) => {
   const [sequence, setSequence] = useState<BasePair[]>([]);
   const [targetSequence, setTargetSequence] = useState<BasePair[]>([]);
-  const [selectedBase, setSelectedBase] = useState<string | null>(null);
+  const [selectedBase, setSelectedBase] = useState<BasePair | null>(null);
   const [matches, setMatches] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
 
@@ -33,7 +33,7 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
     'T': 'A',
     'G': 'C',
     'C': 'G'
-  };
+  } as const;
 
   const generateSequence = () => {
     const bases: ('A' | 'T' | 'G' | 'C')[] = ['A', 'T', 'G', 'C'];
@@ -68,46 +68,58 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
     setTargetSequence(shuffledTarget);
     setMatches(0);
     setIsComplete(false);
+    setSelectedBase(null);
+    
+    console.log('Generated sequence:', newSequence);
+    console.log('Target sequence:', shuffledTarget);
   };
 
   useEffect(() => {
     if (isOpen) {
+      console.log('Gene edit modal opened, generating sequence...');
       generateSequence();
     }
   }, [isOpen, difficulty]);
 
-  const handleBaseDrop = (targetId: string, sourceBase: BasePair) => {
-    const targetIndex = sequence.findIndex(base => base.id === targetId);
-    const sourceIndex = targetSequence.findIndex(base => base.id === sourceBase.id);
+  const handleBaseClick = (clickedBase: BasePair, isFromTarget: boolean) => {
+    console.log('Base clicked:', clickedBase, 'from target:', isFromTarget);
     
-    if (targetIndex === -1 || sourceIndex === -1) return;
-    
-    const targetBase = sequence[targetIndex];
-    
-    // Check if it's a valid pair
-    if (basePairs[targetBase.base] === sourceBase.base) {
-      setSequence(prev => prev.map(base => 
-        base.id === targetId ? { ...base, paired: true } : base
-      ));
-      
-      setTargetSequence(prev => prev.filter(base => base.id !== sourceBase.id));
-      
-      setMatches(prev => {
-        const newMatches = prev + 1;
-        if (newMatches === sequence.length) {
-          setIsComplete(true);
-        }
-        return newMatches;
-      });
-    } else {
-      // Wrong pair - show feedback
-      setTimeout(() => {
-        // Visual feedback for wrong pair
-      }, 100);
+    if (isFromTarget) {
+      setSelectedBase(clickedBase);
+    } else if (selectedBase && !clickedBase.paired) {
+      // Try to pair the selected base with the clicked sequence base
+      if (basePairs[clickedBase.base] === selectedBase.base) {
+        console.log('Valid pair found!');
+        
+        // Mark sequence base as paired
+        setSequence(prev => prev.map(base => 
+          base.id === clickedBase.id ? { ...base, paired: true } : base
+        ));
+        
+        // Remove base from target sequence
+        setTargetSequence(prev => prev.filter(base => base.id !== selectedBase.id));
+        
+        // Update matches
+        setMatches(prev => {
+          const newMatches = prev + 1;
+          if (newMatches === sequence.length) {
+            setIsComplete(true);
+          }
+          return newMatches;
+        });
+        
+        setSelectedBase(null);
+      } else {
+        console.log('Invalid pair');
+        // Visual feedback for wrong pair could be added here
+        setSelectedBase(null);
+      }
     }
   };
 
   const handleComplete = () => {
+    console.log('Completing gene edit...');
+    
     // Calculate abilities based on gene sequence
     const abilities: { jump?: number; speed?: number; shield?: boolean } = {};
     
@@ -116,9 +128,13 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
     const gCount = sequence.filter(base => base.base === 'G').length;
     const cCount = sequence.filter(base => base.base === 'C').length;
     
+    console.log('Base counts:', { aCount, tCount, gCount, cCount });
+    
     if (aCount >= 2) abilities.jump = 1.5;
     if (tCount >= 2) abilities.speed = 1.3;
     if (gCount >= 2 && cCount >= 2) abilities.shield = true;
+    
+    console.log('Abilities unlocked:', abilities);
     
     onComplete(abilities);
     onClose();
@@ -142,7 +158,7 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
         <div className="flex items-center justify-between p-6 border-b border-cyan-500/20">
           <div>
             <h2 className="text-2xl font-bold text-white mb-1">Gene Editor</h2>
-            <p className="text-cyan-300 text-sm">Match base pairs to unlock abilities</p>
+            <p className="text-cyan-300 text-sm">Click to select bases and pair them correctly</p>
           </div>
           <button
             onClick={onClose}
@@ -157,20 +173,15 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
           <div className="mb-6">
             <h3 className="text-lg font-semibold text-white mb-3">DNA Sequence</h3>
             <div className="flex gap-2 justify-center flex-wrap">
-              {sequence.map((base, index) => (
+              {sequence.map((base) => (
                 <div key={base.id} className="flex flex-col items-center">
                   <div
                     className={`w-16 h-16 rounded-lg border-2 ${
                       base.paired 
                         ? 'border-green-400 bg-gradient-to-br ' + getBaseColor(base.base)
-                        : 'border-gray-500 bg-gradient-to-br from-gray-600 to-gray-800'
-                    } flex items-center justify-center text-white font-bold text-xl cursor-pointer transition-all duration-200 hover:scale-105`}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const sourceData = JSON.parse(e.dataTransfer?.getData('text/plain') || '{}');
-                      handleBaseDrop(base.id, sourceData);
-                    }}
-                    onDragOver={(e) => e.preventDefault()}
+                        : 'border-gray-500 bg-gradient-to-br from-gray-600 to-gray-800 cursor-pointer hover:border-white'
+                    } flex items-center justify-center text-white font-bold text-xl transition-all duration-200 hover:scale-105`}
+                    onClick={() => handleBaseClick(base, false)}
                   >
                     {base.base}
                   </div>
@@ -189,16 +200,22 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
               {targetSequence.map((base) => (
                 <div
                   key={base.id}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer?.setData('text/plain', JSON.stringify(base));
-                  }}
-                  className={`w-16 h-16 rounded-lg border-2 border-white/30 bg-gradient-to-br ${getBaseColor(base.base)} flex items-center justify-center text-white font-bold text-xl cursor-grab hover:cursor-grabbing transition-all duration-200 hover:scale-105 hover:shadow-lg`}
+                  className={`w-16 h-16 rounded-lg border-2 ${
+                    selectedBase?.id === base.id 
+                      ? 'border-yellow-400 ring-2 ring-yellow-400/50'
+                      : 'border-white/30'
+                  } bg-gradient-to-br ${getBaseColor(base.base)} flex items-center justify-center text-white font-bold text-xl cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg`}
+                  onClick={() => handleBaseClick(base, true)}
                 >
                   {base.base}
                 </div>
               ))}
             </div>
+            {selectedBase && (
+              <p className="text-center text-cyan-300 mt-2 text-sm">
+                Selected: {selectedBase.base} - Click on its pair in the sequence above
+              </p>
+            )}
           </div>
 
           {/* Progress */}
@@ -210,7 +227,7 @@ const GeneEditModal: React.FC<GeneEditModalProps> = ({
             <div className="w-full bg-gray-700 rounded-full h-3">
               <div
                 className="bg-gradient-to-r from-cyan-500 to-green-400 h-3 rounded-full transition-all duration-500"
-                style={{ width: `${(matches / sequence.length) * 100}%` }}
+                style={{ width: `${sequence.length > 0 ? (matches / sequence.length) * 100 : 0}%` }}
               ></div>
             </div>
           </div>
